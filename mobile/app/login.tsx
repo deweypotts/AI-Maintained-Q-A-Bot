@@ -2,17 +2,28 @@ import { useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
 import { router } from 'expo-router';
 import { useAuth } from '../context/AuthContext';
+import { colors } from '../theme/colors';
 import { Role } from '../types/chat';
 
 export default function Login() {
   const { login } = useAuth();
   const [name, setName] = useState('');
   const [role, setRole] = useState<Role>('technician');
+  const [submitting, setSubmitting] = useState(false);
+  const [error, setError] = useState<string | null>(null);
 
-  const handleLogin = () => {
+  const handleLogin = async () => {
     if (!name.trim()) return;
-    login(name, role);
-    router.replace('/');
+    setSubmitting(true);
+    setError(null);
+    try {
+      await login(name, role);
+      router.replace('/');
+    } catch (err) {
+      setError('Could not reach the server. Is it running?');
+    } finally {
+      setSubmitting(false);
+    }
   };
 
   return (
@@ -42,19 +53,21 @@ export default function Login() {
         ))}
       </View>
 
-      <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={!name.trim()}>
-        <Text style={styles.loginText}>Continue</Text>
+      {error && <Text style={styles.error}>{error}</Text>}
+
+      <TouchableOpacity style={styles.loginButton} onPress={handleLogin} disabled={!name.trim() || submitting}>
+        <Text style={styles.loginText}>{submitting ? 'Signing in...' : 'Continue'}</Text>
       </TouchableOpacity>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: '#FFFFFF' },
-  title: { fontSize: 32, fontWeight: '700', textAlign: 'center', color: '#111827' },
-  subtitle: { fontSize: 15, textAlign: 'center', color: '#6B7280', marginTop: 4, marginBottom: 32 },
+  container: { flex: 1, justifyContent: 'center', padding: 24, backgroundColor: colors.white },
+  title: { fontSize: 32, fontWeight: '700', textAlign: 'center', color: colors.textPrimary },
+  subtitle: { fontSize: 15, textAlign: 'center', color: colors.textSecondary, marginTop: 4, marginBottom: 32 },
   input: {
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.background,
     borderRadius: 12,
     paddingHorizontal: 16,
     paddingVertical: 12,
@@ -67,12 +80,13 @@ const styles = StyleSheet.create({
     paddingVertical: 12,
     borderRadius: 12,
     borderWidth: 1,
-    borderColor: '#E5E7EB',
+    borderColor: colors.border,
     alignItems: 'center',
   },
-  roleButtonActive: { backgroundColor: '#2563EB', borderColor: '#2563EB' },
+  roleButtonActive: { backgroundColor: colors.primaryGreen, borderColor: colors.primaryGreen },
   roleText: { color: '#374151', fontWeight: '600' },
-  roleTextActive: { color: '#FFFFFF' },
-  loginButton: { backgroundColor: '#111827', borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
-  loginText: { color: '#FFFFFF', fontWeight: '700', fontSize: 16 },
+  roleTextActive: { color: colors.white },
+  loginButton: { backgroundColor: colors.navy, borderRadius: 12, paddingVertical: 14, alignItems: 'center' },
+  loginText: { color: colors.white, fontWeight: '700', fontSize: 16 },
+  error: { color: colors.danger, fontSize: 13, textAlign: 'center', marginBottom: 12 },
 });

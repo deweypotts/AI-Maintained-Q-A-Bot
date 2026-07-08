@@ -5,6 +5,5 @@ export default function Index() {
   const { user } = useAuth();
 
   if (!user) return <Redirect href="/login" />;
-  if (user.role === 'manager') return <Redirect href="/(manager)/chats" />;
-  return <Redirect href="/(technician)" />;
+  return <Redirect href="/home" />;
 }

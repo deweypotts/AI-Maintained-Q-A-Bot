@@ -1,7 +1,14 @@
 import { StyleSheet, Text, View } from 'react-native';
-import { Message } from '../types/chat';
+import { colors, radii } from '../theme/colors';
+import { Message, Role } from '../types/chat';
 
-export function MessageBubble({ message }: { message: Message }) {
+interface MessageBubbleProps {
+  message: Message;
+  viewerRole: Role;
+  otherPartyName?: string;
+}
+
+export function MessageBubble({ message, viewerRole, otherPartyName }: MessageBubbleProps) {
   if (message.sender === 'system') {
     return (
       <View style={styles.systemRow}>
@@ -10,24 +17,27 @@ export function MessageBubble({ message }: { message: Message }) {
     );
   }
 
-  const isTechnician = message.sender === 'technician';
+  // The bot answers on the manager's behalf, so from the manager's seat it
+  // belongs on "our" side even though the manager didn't type it themselves.
+  const isOwnSide =
+    viewerRole === 'manager' ? message.sender === 'manager' || message.sender === 'bot' : message.sender === 'technician';
+  const isSelfTyped = message.sender === viewerRole;
+  const label =
+    message.sender === 'bot' ? 'Applause Bot' : message.sender === 'manager' ? 'Manager' : otherPartyName ?? 'Technician';
 
   return (
-    <View style={[styles.row, isTechnician ? styles.rowRight : styles.rowLeft]}>
+    <View style={[styles.row, isOwnSide ? styles.rowRight : styles.rowLeft]}>
       <View
         style={[
           styles.bubble,
-          message.sender === 'technician' && styles.technicianBubble,
+          isSelfTyped && styles.ownBubble,
           message.sender === 'bot' && styles.botBubble,
-          message.sender === 'manager' && styles.managerBubble,
+          !isSelfTyped && message.sender === 'manager' && styles.managerBubble,
+          !isSelfTyped && message.sender === 'technician' && styles.technicianBubble,
         ]}
       >
-        {message.sender !== 'technician' && (
-          <Text style={styles.senderLabel}>
-            {message.sender === 'bot' ? 'Applause Bot' : 'Manager'}
-          </Text>
-        )}
-        <Text style={isTechnician ? styles.technicianText : styles.otherText}>{message.text}</Text>
+        {!isSelfTyped && <Text style={styles.senderLabel}>{label}</Text>}
+        <Text style={isSelfTyped ? styles.ownText : styles.otherText}>{message.text}</Text>
         {message.unverified && <Text style={styles.unverifiedTag}>Unverified — awaiting review</Text>}
       </View>
     </View>
@@ -44,20 +54,21 @@ const styles = StyleSheet.create({
   rowRight: { justifyContent: 'flex-end' },
   bubble: {
     maxWidth: '80%',
-    borderRadius: 16,
+    borderRadius: radii.bubble,
     paddingVertical: 8,
     paddingHorizontal: 12,
   },
-  technicianBubble: { backgroundColor: '#2563EB' },
+  ownBubble: { backgroundColor: colors.primaryGreen },
   botBubble: { backgroundColor: '#E5E7EB' },
-  managerBubble: { backgroundColor: '#DCFCE7' },
-  technicianText: { color: '#FFFFFF', fontSize: 15 },
-  otherText: { color: '#111827', fontSize: 15 },
-  senderLabel: { fontSize: 11, fontWeight: '600', color: '#6B7280', marginBottom: 2 },
+  managerBubble: { backgroundColor: colors.amberSoft },
+  technicianBubble: { backgroundColor: '#E0F2FE' },
+  ownText: { color: colors.white, fontSize: 15 },
+  otherText: { color: colors.textPrimary, fontSize: 15 },
+  senderLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, marginBottom: 2 },
   unverifiedTag: { fontSize: 11, color: '#B45309', marginTop: 4, fontStyle: 'italic' },
   systemRow: { alignItems: 'center', marginVertical: 10 },
   systemText: {
-    backgroundColor: '#FEF3C7',
+    backgroundColor: colors.amberSoft,
     color: '#92400E',
     fontSize: 12,
     paddingVertical: 4,

@@ -11,7 +11,7 @@ create table users (
   created_at timestamptz not null default now()
 );
 
--- One persistent chat per technician.
+-- A technician can have many chats (conversations), started from their inbox.
 create table chats (
   id uuid primary key default gen_random_uuid(),
   technician_id uuid not null references users(id),
@@ -19,7 +19,8 @@ create table chats (
 );
 
 -- A bounded slice of a chat where a manager was pulled in, from the
--- escalation trigger to resolution (idle timeout or manager "Mark resolved").
+-- escalation trigger to resolution (technician confirms + manager approves
+-- the drafted knowledge base entry).
 create table episodes (
   id uuid primary key default gen_random_uuid(),
   chat_id uuid not null references chats(id),
@@ -36,6 +37,11 @@ create table messages (
   sender text not null check (sender in ('technician', 'bot', 'manager', 'system')),
   text text not null,
   unverified boolean not null default false,
+  -- 'all' (default) is visible to both roles. The bot's "are you done?"
+  -- exchange with the technician is 'technician'-only (the manager never
+  -- sees it); the KB draft review negotiation is 'manager'-only (the
+  -- technician never sees it).
+  visible_to text not null default 'all' check (visible_to in ('all', 'technician', 'manager')),
   created_at timestamptz not null default now()
 );
 
@@ -65,3 +71,13 @@ create table kb_entries (
 create index kb_entries_embedding_idx on kb_entries using hnsw (embedding vector_cosine_ops);
 create index messages_chat_id_idx on messages (chat_id);
 create index episodes_chat_id_idx on episodes (chat_id);
+
+-- Tracks what the bot is waiting on next in a chat: confirming the
+-- technician wants to end the conversation, or waiting on the manager to
+-- approve/edit the drafted KB entry shown inline in the chat.
+alter table chats add column pending_action text check (pending_action in ('confirm_end', 'review_kb'));
+alter table chats add column pending_kb_entry_id uuid references pending_kb_entries(id);
+
+-- When a manager last viewed this chat — used to compute the "unread"
+-- technician message shown as the inbox preview.
+alter table chats add column manager_read_at timestamptz;

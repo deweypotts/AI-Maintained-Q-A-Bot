@@ -1,14 +1,34 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { StyleSheet, Text, TextInput, TouchableOpacity, View } from 'react-native';
+import { colors } from '../theme/colors';
 
-export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
+interface ChatInputProps {
+  onSend: (text: string) => void;
+  prefill?: string;
+}
+
+export function ChatInput({ onSend, prefill }: ChatInputProps) {
   const [text, setText] = useState('');
+
+  useEffect(() => {
+    if (prefill) setText(prefill);
+  }, [prefill]);
 
   const handleSend = () => {
     const trimmed = text.trim();
     if (!trimmed) return;
     onSend(trimmed);
     setText('');
+  };
+
+  const handleKeyPress = (e: any) => {
+    // Web fires real key events through onKeyPress; native return-key
+    // presses land in onSubmitEditing instead. Shift+Enter still inserts
+    // a newline since we only send on a bare Enter.
+    if (e.nativeEvent.key === 'Enter' && !e.nativeEvent.shiftKey) {
+      e.preventDefault?.();
+      handleSend();
+    }
   };
 
   return (
@@ -21,6 +41,8 @@ export function ChatInput({ onSend }: { onSend: (text: string) => void }) {
         placeholderTextColor="#9CA3AF"
         multiline
         onSubmitEditing={handleSend}
+        onKeyPress={handleKeyPress}
+        blurOnSubmit={false}
       />
       <TouchableOpacity style={styles.sendButton} onPress={handleSend} disabled={!text.trim()}>
         <Text style={styles.sendText}>Send</Text>
@@ -36,13 +58,13 @@ const styles = StyleSheet.create({
     paddingHorizontal: 12,
     paddingVertical: 8,
     borderTopWidth: 1,
-    borderTopColor: '#E5E7EB',
-    backgroundColor: '#FFFFFF',
+    borderTopColor: colors.border,
+    backgroundColor: colors.white,
   },
   input: {
     flex: 1,
     maxHeight: 100,
-    backgroundColor: '#F3F4F6',
+    backgroundColor: colors.background,
     borderRadius: 18,
     paddingHorizontal: 14,
     paddingVertical: 8,
@@ -50,10 +72,10 @@ const styles = StyleSheet.create({
     marginRight: 8,
   },
   sendButton: {
-    backgroundColor: '#2563EB',
+    backgroundColor: colors.primaryGreen,
     borderRadius: 18,
     paddingHorizontal: 16,
     paddingVertical: 10,
   },
-  sendText: { color: '#FFFFFF', fontWeight: '600' },
+  sendText: { color: colors.white, fontWeight: '600' },
 });

@@ -13,14 +13,18 @@ export interface Message {
 export interface ChatSummary {
   id: string;
   technicianName: string;
-  lastMessagePreview: string;
-  escalated: boolean;
-  updatedAt: string;
+  lastMessagePreview: string | null;
+  resolved: boolean;
+  hasUnread: boolean;
+  updatedAt: string | null;
 }
 
-export interface PendingApproval {
+export type KBStatus = 'pending' | 'approved';
+
+export interface KBEntry {
   id: string;
-  chatId: string;
   question: string;
-  draftAnswer: string;
+  answer: string;
+  status: KBStatus;
+  updatedAt: string;
 }
