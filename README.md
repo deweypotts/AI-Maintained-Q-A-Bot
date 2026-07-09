@@ -1,6 +1,6 @@
-# Applause
+# Self-Maintained Chatbot
 
-A self-maintaining Q&A bot for field technicians. Technicians ask a chatbot
+A self-maintaining chatbot for field technicians. Technicians ask a chatbot
 questions; if the bot can't help, a manager is pulled inline into the same
 chat. Once the exchange resolves, an AI pass proposes a knowledge base entry
 for the manager to approve, so the next technician with the same question
