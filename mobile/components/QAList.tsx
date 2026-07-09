@@ -57,8 +57,8 @@ export function QAList() {
             </Text>
           </View>
           {item.status === 'pending' && (
-            <View style={[styles.statusIcon, styles.statusPending]}>
-              <Ionicons name="time" size={13} color={colors.white} />
+            <View style={styles.badge}>
+              <Text style={styles.badgeText}>Needs approval</Text>
             </View>
           )}
           <TouchableOpacity style={styles.deleteButton} onPress={() => handleDelete(item)}>
@@ -88,8 +88,8 @@ const styles = StyleSheet.create({
   rowContent: { flex: 1, marginRight: 8 },
   question: { fontSize: 15, fontWeight: '600', color: colors.textPrimary },
   answer: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
-  statusIcon: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center', marginRight: 8 },
-  statusPending: { backgroundColor: colors.amber },
+  badge: { backgroundColor: colors.amberSoft, borderRadius: radii.pill, paddingHorizontal: 10, paddingVertical: 4, marginRight: 8 },
+  badgeText: { color: '#92400E', fontSize: 11, fontWeight: '700' },
   deleteButton: { padding: 6 },
   empty: { textAlign: 'center', color: colors.textSecondary, marginTop: 40 },
 });

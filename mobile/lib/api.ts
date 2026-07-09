@@ -35,10 +35,13 @@ export function fetchChat(chatId: string, role: Role) {
 }
 
 export function sendMessage(chatId: string, sender: 'technician' | 'manager', text: string) {
-  return request<{ messages: Message[]; escalated: boolean }>(`/api/chats/${chatId}/messages`, {
-    method: 'POST',
-    body: JSON.stringify({ sender, text }),
-  });
+  return request<{ messages: Message[]; escalated: boolean; prefill?: { question: string; answer: string } | null }>(
+    `/api/chats/${chatId}/messages`,
+    {
+      method: 'POST',
+      body: JSON.stringify({ sender, text }),
+    }
+  );
 }
 
 export function fetchChatsList() {

@@ -73,9 +73,11 @@ create index messages_chat_id_idx on messages (chat_id);
 create index episodes_chat_id_idx on episodes (chat_id);
 
 -- Tracks what the bot is waiting on next in a chat: confirming the
--- technician wants to end the conversation, or waiting on the manager to
--- approve/edit the drafted KB entry shown inline in the chat.
-alter table chats add column pending_action text check (pending_action in ('confirm_end', 'review_kb'));
+-- technician wants to end the conversation, waiting on the manager to
+-- approve/edit the drafted KB entry shown inline in the chat, or waiting on
+-- the manager's hand-edited replacement text after they asked to edit it
+-- manually.
+alter table chats add column pending_action text check (pending_action in ('confirm_end', 'review_kb', 'manual_edit_kb'));
 alter table chats add column pending_kb_entry_id uuid references pending_kb_entries(id);
 
 -- When a manager last viewed this chat — used to compute the "unread"

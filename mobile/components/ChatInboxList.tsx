@@ -10,28 +10,19 @@ interface ChatInboxListProps {
   fetchChats: () => Promise<{ chats: ChatSummary[] }>;
   onSelectChat: (id: string) => void;
   onNewChat?: () => void;
-  showTechnicianName: boolean;
+  titleField: 'technicianName' | 'managerName';
   emptyText: string;
   hideHeader?: boolean;
 }
 
 const POLL_INTERVAL_MS = 4000;
 
-function StatusIcon({ item }: { item: ChatSummary }) {
-  if (!item.resolved) return null;
-  return (
-    <View style={[styles.statusIcon, styles.statusUpdated]}>
-      <Ionicons name="checkmark" size={14} color={colors.white} />
-    </View>
-  );
-}
-
 export function ChatInboxList({
   title,
   fetchChats,
   onSelectChat,
   onNewChat,
-  showTechnicianName,
+  titleField,
   emptyText,
   hideHeader,
 }: ChatInboxListProps) {
@@ -71,17 +62,15 @@ export function ChatInboxList({
         contentContainerStyle={styles.list}
         renderItem={({ item }) => (
           <TouchableOpacity style={styles.row} onPress={() => onSelectChat(item.id)}>
+            {item.hasUnread && <View style={styles.unreadDot} />}
             <View style={styles.rowContent}>
-              <Text style={styles.name} numberOfLines={1}>
-                {showTechnicianName ? item.technicianName : item.lastMessagePreview ?? 'New conversation'}
+              <Text style={[styles.name, item.hasUnread && styles.nameUnread]} numberOfLines={1}>
+                {item[titleField]}
               </Text>
-              {showTechnicianName && (
-                <Text style={styles.preview} numberOfLines={1}>
-                  {item.lastMessagePreview ?? 'New conversation'}
-                </Text>
-              )}
+              <Text style={[styles.preview, item.hasUnread && styles.previewUnread]} numberOfLines={1}>
+                {item.lastMessagePreview ?? 'New conversation'}
+              </Text>
             </View>
-            <StatusIcon item={item} />
           </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={styles.empty}>{emptyText}</Text>}
@@ -124,10 +113,11 @@ const styles = StyleSheet.create({
     shadowOffset: { width: 0, height: 2 },
     elevation: 1,
   },
+  unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.blueAccent, marginRight: 10 },
   rowContent: { flex: 1, marginRight: 8 },
   name: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
+  nameUnread: { fontWeight: '700' },
   preview: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },
-  statusIcon: { width: 24, height: 24, borderRadius: 12, alignItems: 'center', justifyContent: 'center' },
-  statusUpdated: { backgroundColor: colors.success },
+  previewUnread: { color: colors.textPrimary, fontWeight: '700' },
   empty: { textAlign: 'center', color: colors.textSecondary, marginTop: 40 },
 });

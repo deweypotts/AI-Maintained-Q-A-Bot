@@ -32,8 +32,7 @@ export function MessageBubble({ message, viewerRole, otherPartyName }: MessageBu
           styles.bubble,
           isSelfTyped && styles.ownBubble,
           message.sender === 'bot' && styles.botBubble,
-          !isSelfTyped && message.sender === 'manager' && styles.managerBubble,
-          !isSelfTyped && message.sender === 'technician' && styles.technicianBubble,
+          !isSelfTyped && message.sender !== 'bot' && styles.otherPartyBubble,
         ]}
       >
         {!isSelfTyped && <Text style={styles.senderLabel}>{label}</Text>}
@@ -60,8 +59,7 @@ const styles = StyleSheet.create({
   },
   ownBubble: { backgroundColor: colors.primaryGreen },
   botBubble: { backgroundColor: '#E5E7EB' },
-  managerBubble: { backgroundColor: colors.amberSoft },
-  technicianBubble: { backgroundColor: '#E0F2FE' },
+  otherPartyBubble: { backgroundColor: '#E0F2FE' },
   ownText: { color: colors.white, fontSize: 15 },
   otherText: { color: colors.textPrimary, fontSize: 15 },
   senderLabel: { fontSize: 11, fontWeight: '600', color: colors.textSecondary, marginBottom: 2 },

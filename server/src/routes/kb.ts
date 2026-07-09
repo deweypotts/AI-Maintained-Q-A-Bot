@@ -8,6 +8,34 @@ export const kbRouter = Router();
 
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
 
+// Finalizes a still-pending draft into the real knowledge base. Used both
+// when the manager says "keep as is" and when they hand-edit and send —
+// either way, acting on a pending entry from the Q&A tab means they're done
+// reviewing it.
+async function approvePendingEntry(pendingId: string, question: string, answer: string) {
+  const pendingRow = await pool.query('select episode_id as "episodeId" from pending_kb_entries where id = $1', [pendingId]);
+  const episodeId = pendingRow.rows[0].episodeId;
+
+  await pool.query('insert into kb_entries (question, answer, source_episode_id) values ($1, $2, $3)', [
+    question,
+    answer,
+    episodeId,
+  ]);
+  await pool.query("update pending_kb_entries set question = $2, draft_answer = $3, status = 'approved' where id = $1", [
+    pendingId,
+    question,
+    answer,
+  ]);
+
+  // If some chat is mid-review of this exact draft, move it along instead of
+  // leaving the manager stuck waiting on a prompt for an already-approved entry.
+  const chatResult = await pool.query('select id from chats where pending_kb_entry_id = $1', [pendingId]);
+  const chat = chatResult.rows[0];
+  if (chat) {
+    await advanceReview(chat.id, episodeId, pendingId);
+  }
+}
+
 // Both approved kb_entries and still-pending drafts show up here so the
 // manager can review/edit/delete either from one list.
 kbRouter.get('/', asyncHandler(async (req, res) => {
@@ -74,14 +102,12 @@ kbRouter.patch('/:id', asyncHandler(async (req, res) => {
     return;
   }
 
-  const pending = await pool.query(
-    "update pending_kb_entries set question = $2, draft_answer = $3 where id = $1 and status = 'pending' returning id",
-    [id, question.trim(), answer.trim()]
-  );
+  const pending = await pool.query("select id from pending_kb_entries where id = $1 and status = 'pending'", [id]);
   if (!pending.rows[0]) {
     res.status(404).json({ error: 'not found' });
     return;
   }
+  await approvePendingEntry(id, question.trim(), answer.trim());
   res.json({ ok: true });
 }));
 
@@ -117,6 +143,9 @@ kbRouter.post('/:id/message', asyncHandler(async (req, res) => {
   const classification = await classifyEditReply(entry.question, entry.answer, reply);
 
   if (classification.intent === 'keep') {
+    if (isPending) {
+      await approvePendingEntry(id, entry.question, entry.answer);
+    }
     res.json({ action: 'kept', message: 'Kept as is.' });
     return;
   }

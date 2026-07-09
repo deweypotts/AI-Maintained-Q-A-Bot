@@ -21,7 +21,10 @@ export async function getChatState(chatId: string) {
     'select pending_action as "pendingAction", pending_kb_entry_id as "pendingKbEntryId" from chats where id = $1',
     [chatId]
   );
-  return result.rows[0] as { pendingAction: 'confirm_end' | 'review_kb' | null; pendingKbEntryId: string | null };
+  return result.rows[0] as {
+    pendingAction: 'confirm_end' | 'review_kb' | 'manual_edit_kb' | null;
+    pendingKbEntryId: string | null;
+  };
 }
 
 export async function setChatState(chatId: string, pendingAction: string | null, pendingKbEntryId: string | null) {
@@ -32,8 +35,23 @@ export async function setChatState(chatId: string, pendingAction: string | null,
   ]);
 }
 
-export function formatReviewPrompt(question: string, answer: string) {
-  return `Here's what I'll add to the knowledge base:\n\nQ: ${question}\nA: ${answer}\n\nManager — does this look correct?`;
+export async function getTechnicianName(chatId: string): Promise<string> {
+  const result = await pool.query(
+    'select u.name from chats c join users u on u.id = c.technician_id where c.id = $1',
+    [chatId]
+  );
+  return result.rows[0]?.name ?? 'The technician';
+}
+
+export function formatReviewPrompt(technicianName: string, question: string, answer: string) {
+  return `${technicianName} said that answered their question. I suggest adding this to the Q&A database.\n\nQ: ${question}\nA: ${answer}\n\nShould I add it? Or do you want an edit?`;
+}
+
+// Used when re-showing the *same* draft after the manager asked for a
+// change — the "<name> said that answered their question" framing only
+// makes sense the first time a given entry is proposed.
+export function formatRevisedReviewPrompt(question: string, answer: string) {
+  return `Here's the updated version:\n\nQ: ${question}\nA: ${answer}\n\nShould I add it? Or do you want an edit?`;
 }
 
 // Posts the next pending draft for this episode, or — if none remain —
@@ -46,12 +64,15 @@ export async function advanceReview(chatId: string, episodeId: string, justHandl
   const next = nextResult.rows[0];
 
   if (next) {
+    const technicianName = await getTechnicianName(chatId);
     await setChatState(chatId, 'review_kb', next.id);
-    await insertMessage(chatId, episodeId, 'bot', formatReviewPrompt(next.question, next.draftAnswer), { visibleTo: 'manager' });
+    await insertMessage(chatId, episodeId, 'bot', formatReviewPrompt(technicianName, next.question, next.draftAnswer), {
+      visibleTo: 'manager',
+    });
     return;
   }
 
   await pool.query("update episodes set status = 'resolved', resolved_at = now() where id = $1", [episodeId]);
   await setChatState(chatId, null, null);
-  await insertMessage(chatId, episodeId, 'bot', 'The knowledge base has been updated!');
+  await insertMessage(chatId, episodeId, 'bot', 'The knowledge base has been updated!', { visibleTo: 'manager' });
 }

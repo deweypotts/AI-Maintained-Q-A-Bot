@@ -1,14 +1,34 @@
 import { Router } from 'express';
-import { detectsResolution, detectsYes, draftKBEntries, matchAgainstKB, reviewManagerReply, reviseKBEntry } from '../claude';
+import { classifyEditReply, detectsResolution, detectsYes, draftKBEntries, matchAgainstKB, reviseKBEntry } from '../claude';
 import { pool } from '../db';
 import { asyncHandler } from '../lib/asyncHandler';
-import { advanceReview, formatReviewPrompt, getChatState, insertMessage, setChatState, VisibleTo } from '../lib/kbChat';
+import {
+  advanceReview,
+  formatRevisedReviewPrompt,
+  formatReviewPrompt,
+  getChatState,
+  getTechnicianName,
+  insertMessage,
+  setChatState,
+  VisibleTo,
+} from '../lib/kbChat';
 
 export const chatsRouter = Router();
 
 const NEGATIVE_FEEDBACK = /not helpful|didn.?t help|doesn.?t work|didn.?t work|wrong answer|that.?s not it/i;
 const END_CHAT_PROMPT = 'Is your issue resolved?';
 const UUID_RE = /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i;
+
+// Reconstructs "Q: ...\nA: ..." text (what we prefill the manager's chat box
+// with) back into separate fields. Falls back to treating the whole reply as
+// the answer if they didn't keep the markers.
+function parseHandEditedQA(text: string, fallbackQuestion: string): { question: string; answer: string } {
+  const match = text.match(/^Q:\s*([\s\S]*?)\n+A:\s*([\s\S]*)$/i);
+  if (match) {
+    return { question: match[1].trim(), answer: match[2].trim() };
+  }
+  return { question: fallbackQuestion, answer: text.trim() };
+}
 
 async function getMessages(chatId: string, viewerRole: 'technician' | 'manager') {
   const hiddenFrom: VisibleTo = viewerRole === 'manager' ? 'technician' : 'manager';
@@ -31,12 +51,23 @@ chatsRouter.get('/', asyncHandler(async (req, res) => {
     `
     select c.id,
            u.name as "technicianName",
-           exists(select 1 from episodes e where e.chat_id = c.id and e.status = 'resolved') as resolved,
-           exists(
-             select 1 from messages m
-             where m.chat_id = c.id and m.sender = 'technician' and m.visible_to != 'technician'
-               and (c.manager_read_at is null or m.created_at > c.manager_read_at)
-           ) as "hasUnread",
+           -- Placeholder until chats carry a real assigned manager.
+           'Jeff' as "managerName",
+           case
+             when $1::uuid is not null then
+               coalesce(
+                 (select m.sender != 'technician' from messages m
+                    where m.chat_id = c.id and m.visible_to != 'manager'
+                    order by m.created_at desc limit 1),
+                 false
+               )
+             else
+               exists(
+                 select 1 from messages m
+                 where m.chat_id = c.id and m.sender = 'technician' and m.visible_to != 'technician'
+                   and (c.manager_read_at is null or m.created_at > c.manager_read_at)
+               )
+           end as "hasUnread",
            case
              when $1::uuid is not null then
                (select text from messages m where m.chat_id = c.id and m.visible_to != 'manager' order by m.created_at desc limit 1)
@@ -67,7 +98,9 @@ chatsRouter.post('/', asyncHandler(async (req, res) => {
     return;
   }
   const inserted = await pool.query('insert into chats (technician_id) values ($1) returning id', [technicianId]);
-  res.json({ chatId: inserted.rows[0].id });
+  const chatId = inserted.rows[0].id;
+  await insertMessage(chatId, null, 'bot', 'How can I help you today?');
+  res.json({ chatId });
 }));
 
 chatsRouter.get('/:chatId', asyncHandler(async (req, res) => {
@@ -126,16 +159,38 @@ chatsRouter.post('/:chatId/messages', asyncHandler(async (req, res) => {
     }
 
     const inReview = chatState.pendingAction === 'review_kb' && chatState.pendingKbEntryId;
-    // While reviewing a draft, the manager's replies are part of that
-    // private negotiation — the technician never sees them.
-    await insertMessage(chatId, openEpisode.id, 'manager', text, { visibleTo: inReview ? 'manager' : 'all' });
+    const awaitingManualEdit = chatState.pendingAction === 'manual_edit_kb' && chatState.pendingKbEntryId;
+    // While reviewing (or hand-editing) a draft, the manager's replies are
+    // part of that private negotiation — the technician never sees them.
+    const isPrivateNegotiation = inReview || awaitingManualEdit;
+    await insertMessage(chatId, openEpisode.id, 'manager', text, { visibleTo: isPrivateNegotiation ? 'manager' : 'all' });
 
-    if (inReview) {
+    let prefill: { question: string; answer: string } | null = null;
+
+    if (awaitingManualEdit) {
       const pendingResult = await pool.query('select * from pending_kb_entries where id = $1', [chatState.pendingKbEntryId]);
       const pending = pendingResult.rows[0];
-      const review = await reviewManagerReply(pending.question, pending.draft_answer, text);
+      // Their hand-edited text is the final answer — save it verbatim and
+      // treat it as approved, same as the normal "looks good" path.
+      const { question, answer } = parseHandEditedQA(text, pending.question);
+      await pool.query('insert into kb_entries (question, answer, source_episode_id) values ($1, $2, $3)', [
+        question,
+        answer,
+        pending.episode_id,
+      ]);
+      await pool.query("update pending_kb_entries set question = $2, draft_answer = $3, status = 'approved' where id = $1", [
+        pending.id,
+        question,
+        answer,
+      ]);
+      await insertMessage(chatId, openEpisode.id, 'bot', 'Saved.', { visibleTo: 'manager' });
+      await advanceReview(chatId, pending.episode_id, pending.id);
+    } else if (inReview) {
+      const pendingResult = await pool.query('select * from pending_kb_entries where id = $1', [chatState.pendingKbEntryId]);
+      const pending = pendingResult.rows[0];
+      const classification = await classifyEditReply(pending.question, pending.draft_answer, text);
 
-      if (review.approved) {
+      if (classification.intent === 'keep') {
         await pool.query('insert into kb_entries (question, answer, source_episode_id) values ($1, $2, $3)', [
           pending.question,
           pending.draft_answer,
@@ -143,21 +198,27 @@ chatsRouter.post('/:chatId/messages', asyncHandler(async (req, res) => {
         ]);
         await pool.query("update pending_kb_entries set status = 'approved' where id = $1", [pending.id]);
         await advanceReview(chatId, pending.episode_id, pending.id);
+      } else if (classification.intent === 'manual') {
+        await setChatState(chatId, 'manual_edit_kb', pending.id);
+        await insertMessage(chatId, openEpisode.id, 'bot', 'Sure — edit it below and send when ready.', {
+          visibleTo: 'manager',
+        });
+        prefill = { question: pending.question, answer: pending.draft_answer };
       } else {
-        const revised = await reviseKBEntry(pending.question, pending.draft_answer, review.feedback ?? text);
+        const revised = await reviseKBEntry(pending.question, pending.draft_answer, classification.instruction ?? text);
         await pool.query('update pending_kb_entries set question = $2, draft_answer = $3 where id = $1', [
           pending.id,
           revised.question,
           revised.answer,
         ]);
-        await insertMessage(chatId, openEpisode.id, 'bot', formatReviewPrompt(revised.question, revised.answer), {
+        await insertMessage(chatId, openEpisode.id, 'bot', formatRevisedReviewPrompt(revised.question, revised.answer), {
           visibleTo: 'manager',
         });
         // pending_action stays 'review_kb', same pendingKbEntryId
       }
     }
 
-    res.json({ messages: await getMessages(chatId, 'manager'), escalated: true });
+    res.json({ messages: await getMessages(chatId, 'manager'), escalated: true, prefill });
     return;
   }
 
@@ -190,7 +251,8 @@ chatsRouter.post('/:chatId/messages', asyncHandler(async (req, res) => {
         }
 
         await setChatState(chatId, 'review_kb', firstId);
-        await insertMessage(chatId, openEpisode.id, 'bot', formatReviewPrompt(drafts[0].question, drafts[0].answer), {
+        const technicianName = await getTechnicianName(chatId);
+        await insertMessage(chatId, openEpisode.id, 'bot', formatReviewPrompt(technicianName, drafts[0].question, drafts[0].answer), {
           visibleTo: 'manager',
         });
       } else {

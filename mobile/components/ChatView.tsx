@@ -9,9 +9,10 @@ interface ChatViewProps {
   onSend: (text: string) => void;
   viewerRole: Role;
   otherPartyName?: string;
+  prefill?: string;
 }
 
-export function ChatView({ messages, onSend, viewerRole, otherPartyName }: ChatViewProps) {
+export function ChatView({ messages, onSend, viewerRole, otherPartyName, prefill }: ChatViewProps) {
   const listRef = useRef<FlatList<Message>>(null);
 
   return (
@@ -30,7 +31,7 @@ export function ChatView({ messages, onSend, viewerRole, otherPartyName }: ChatV
         contentContainerStyle={styles.list}
         onContentSizeChange={() => listRef.current?.scrollToEnd({ animated: true })}
       />
-      <ChatInput onSend={onSend} />
+      <ChatInput onSend={onSend} prefill={prefill} />
     </KeyboardAvoidingView>
   );
 }

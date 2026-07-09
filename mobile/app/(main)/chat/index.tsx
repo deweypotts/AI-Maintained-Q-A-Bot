@@ -37,7 +37,7 @@ function ManagerChatHome() {
         <ChatInboxList
           fetchChats={fetchChatsList}
           onSelectChat={(id) => router.push(`/chat/${id}`)}
-          showTechnicianName
+          titleField="technicianName"
           emptyText="No active chats."
           hideHeader
         />
@@ -67,7 +67,7 @@ export default function ChatInbox() {
       fetchChats={() => fetchMyChats(user.id)}
       onSelectChat={(id) => router.push(`/chat/${id}`)}
       onNewChat={handleNewChat}
-      showTechnicianName={false}
+      titleField="managerName"
       emptyText="No conversations yet — tap + to ask a question."
     />
   );

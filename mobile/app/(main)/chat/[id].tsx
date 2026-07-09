@@ -17,6 +17,7 @@ export default function ChatDetail() {
   const insets = useSafeAreaInsets();
   const [messages, setMessages] = useState<Message[]>([]);
   const [technicianName, setTechnicianName] = useState('');
+  const [prefill, setPrefill] = useState<string | undefined>(undefined);
   const sendingRef = useRef(false);
 
   const refresh = useCallback(async () => {
@@ -46,6 +47,7 @@ export default function ChatDetail() {
     try {
       const result = await sendMessage(chatId, user.role, text);
       setMessages(result.messages);
+      setPrefill(result.prefill ? `Q: ${result.prefill.question}\nA: ${result.prefill.answer}` : undefined);
     } finally {
       sendingRef.current = false;
     }
@@ -72,6 +74,7 @@ export default function ChatDetail() {
         onSend={handleSend}
         viewerRole={user.role}
         otherPartyName={user.role === 'manager' ? technicianName : undefined}
+        prefill={prefill}
       />
     </View>
   );

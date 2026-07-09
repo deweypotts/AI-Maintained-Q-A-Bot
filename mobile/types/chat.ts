@@ -13,8 +13,8 @@ export interface Message {
 export interface ChatSummary {
   id: string;
   technicianName: string;
+  managerName: string;
   lastMessagePreview: string | null;
-  resolved: boolean;
   hasUnread: boolean;
   updatedAt: string | null;
 }

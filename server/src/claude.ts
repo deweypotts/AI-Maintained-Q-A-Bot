@@ -75,7 +75,13 @@ export async function draftKBEntries(conversation: string): Promise<Array<{ ques
               items: {
                 type: 'object',
                 properties: {
-                  question: { type: 'string', description: "a clear, reusable phrasing of a single question" },
+                  question: {
+                    type: 'string',
+                    description:
+                      'a generalized, reusable phrasing of the question — broaden overly specific wording to the ' +
+                      'general category being asked about, so it also matches future differently-worded questions on ' +
+                      'the same topic (e.g. "Do we have July 4th off?" becomes "What holidays do we have off?")',
+                  },
                   answer: { type: 'string', description: "the manager's answer to that single question, cleaned up and generalized" },
                 },
                 required: ['question', 'answer'],
@@ -90,7 +96,7 @@ export async function draftKBEntries(conversation: string): Promise<Array<{ ques
     messages: [
       {
         role: 'user',
-        content: `Here is a resolved chat between a technician and their manager:\n\n${conversation}\n\nSummarize this into one or more reusable knowledge base entries. If the technician asked about more than one distinct thing, split them into separate entries rather than merging them — each entry should cover exactly one question and one answer.`,
+        content: `Here is a resolved chat between a technician and their manager:\n\n${conversation}\n\nSummarize this into one or more reusable knowledge base entries. If the technician asked about more than one distinct thing, split them into separate entries rather than merging them — each entry should cover exactly one question and one answer. Phrase each question at the general category level rather than the technician's exact wording, so it reads naturally for anyone asking about that topic (e.g. "Do we have July 4th off?" becomes "What holidays do we have off?").`,
       },
     ],
   });
@@ -116,7 +122,11 @@ export async function detectsResolution(context: string, latestMessage: string):
           properties: {
             resolved: {
               type: 'boolean',
-              description: 'true only if the technician is clearly expressing satisfaction/resolution, not just acknowledging or asking a follow-up',
+              description:
+                "true if the technician's latest message indicates they're done with this topic — either clear " +
+                'satisfaction/resolution ("thanks that worked", "got it, all set", "perfect, fixed") or a plain ' +
+                'acknowledgment that doesn\'t ask another question or continue the conversation ("okay", "will do", ' +
+                '"thanks", "sounds good"). false if they ask a new or follow-up question, or otherwise keep discussing the issue.',
             },
           },
           required: ['resolved'],
@@ -127,7 +137,7 @@ export async function detectsResolution(context: string, latestMessage: string):
     messages: [
       {
         role: 'user',
-        content: `Conversation so far:\n${context}\n\nTechnician's latest message: "${latestMessage}"\n\nDoes this latest message indicate the technician's problem has been solved (e.g. "thanks that worked", "got it, all set", "perfect, fixed")?`,
+        content: `Conversation so far:\n${context}\n\nTechnician's latest message: "${latestMessage}"\n\nIs the technician finished with this topic — either explicitly satisfied/resolved, or just acknowledging without asking anything further (e.g. "okay", "will do", "thanks")? Answer false if they're asking another question or continuing the discussion.`,
       },
     ],
   });
@@ -157,40 +167,6 @@ export async function detectsYes(question: string, reply: string): Promise<boole
   });
   const input = firstToolInput(message) as { yes?: boolean };
   return Boolean(input.yes);
-}
-
-export async function reviewManagerReply(
-  draftQuestion: string,
-  draftAnswer: string,
-  reply: string
-): Promise<{ approved: boolean; feedback: string | null }> {
-  const message = await anthropic.messages.create({
-    model: MATCH_MODEL,
-    max_tokens: 300,
-    tools: [
-      {
-        name: 'submit_review',
-        description: 'Report whether the manager approved the drafted knowledge base entry, or is requesting a change.',
-        input_schema: {
-          type: 'object',
-          properties: {
-            approved: { type: 'boolean' },
-            feedback: { type: 'string', description: 'the requested change; empty string if approved' },
-          },
-          required: ['approved', 'feedback'],
-        },
-      },
-    ],
-    tool_choice: { type: 'tool', name: 'submit_review' },
-    messages: [
-      {
-        role: 'user',
-        content: `Draft knowledge base entry:\nQ: ${draftQuestion}\nA: ${draftAnswer}\n\nManager's reply: "${reply}"\n\nDid the manager approve this as correct (e.g. "yes", "looks good", "correct"), or are they requesting a change? If requesting a change, capture what they want changed in feedback.`,
-      },
-    ],
-  });
-  const input = firstToolInput(message) as { approved?: boolean; feedback?: string };
-  return { approved: Boolean(input.approved), feedback: input.feedback || null };
 }
 
 export async function classifyEditReply(
