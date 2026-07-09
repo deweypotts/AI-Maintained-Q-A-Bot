@@ -2,7 +2,7 @@ import { ChatSummary, KBEntry, Message, Role } from '../types/chat';
 
 // On web this points at the backend running on the same machine. If you test
 // on a physical device via Expo Go, swap this for your machine's LAN IP.
-const BASE_URL = 'http://localhost:3000';
+export const BASE_URL = 'http://localhost:3000';
 
 async function request<T>(path: string, options?: RequestInit): Promise<T> {
   const res = await fetch(`${BASE_URL}${path}`, {
@@ -57,6 +57,10 @@ export function createChat(technicianId: string) {
     method: 'POST',
     body: JSON.stringify({ technicianId }),
   });
+}
+
+export function deleteChat(chatId: string) {
+  return request<{ ok: true }>(`/api/chats/${chatId}`, { method: 'DELETE' });
 }
 
 export function markChatRead(chatId: string) {

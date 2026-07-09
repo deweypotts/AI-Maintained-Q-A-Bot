@@ -1,4 +1,5 @@
 import { pool } from '../db';
+import { broadcastChatUpdate, broadcastInboxUpdate } from './realtime';
 
 export type VisibleTo = 'all' | 'technician' | 'manager';
 export type Sender = 'technician' | 'bot' | 'manager' | 'system';
@@ -14,6 +15,8 @@ export async function insertMessage(
     'insert into messages (chat_id, episode_id, sender, text, unverified, visible_to) values ($1, $2, $3, $4, $5, $6)',
     [chatId, episodeId, sender, text, options.unverified ?? false, options.visibleTo ?? 'all']
   );
+  broadcastChatUpdate(chatId);
+  broadcastInboxUpdate();
 }
 
 export async function getChatState(chatId: string) {

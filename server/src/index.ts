@@ -4,6 +4,7 @@ import express from 'express';
 import { authRouter } from './routes/auth';
 import { chatsRouter } from './routes/chats';
 import { kbRouter } from './routes/kb';
+import { initRealtime } from './lib/realtime';
 
 const app = express();
 app.use(cors());
@@ -34,6 +35,7 @@ process.on('unhandledRejection', (err) => {
 });
 
 const port = process.env.PORT ? Number(process.env.PORT) : 3000;
-app.listen(port, () => {
+const server = app.listen(port, () => {
   console.log(`Applause server listening on port ${port}`);
 });
+initRealtime(server);

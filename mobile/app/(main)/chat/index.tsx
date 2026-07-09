@@ -5,7 +5,7 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatInboxList } from '../../../components/ChatInboxList';
 import { QAList } from '../../../components/QAList';
 import { useAuth } from '../../../context/AuthContext';
-import { createChat, fetchChatsList, fetchMyChats } from '../../../lib/api';
+import { createChat, deleteChat, fetchChatsList, fetchMyChats } from '../../../lib/api';
 import { colors, radii } from '../../../theme/colors';
 
 type ManagerTab = 'chats' | 'qa';
@@ -37,6 +37,7 @@ function ManagerChatHome() {
         <ChatInboxList
           fetchChats={fetchChatsList}
           onSelectChat={(id) => router.push(`/chat/${id}`)}
+          onDeleteChat={deleteChat}
           titleField="technicianName"
           emptyText="No active chats."
           hideHeader
@@ -67,6 +68,7 @@ export default function ChatInbox() {
       fetchChats={() => fetchMyChats(user.id)}
       onSelectChat={(id) => router.push(`/chat/${id}`)}
       onNewChat={handleNewChat}
+      onDeleteChat={deleteChat}
       titleField="managerName"
       emptyText="No conversations yet — tap + to ask a question."
     />

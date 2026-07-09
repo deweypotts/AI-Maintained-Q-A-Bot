@@ -11,3 +11,4 @@ ios/
 android/
 .expo-shared/
 coverage/
+.claude/settings.local.json

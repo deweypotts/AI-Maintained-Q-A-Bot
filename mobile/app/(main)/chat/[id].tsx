@@ -6,10 +6,13 @@ import { useSafeAreaInsets } from 'react-native-safe-area-context';
 import { ChatView } from '../../../components/ChatView';
 import { useAuth } from '../../../context/AuthContext';
 import { fetchChat, markChatRead, sendMessage } from '../../../lib/api';
+import { realtime } from '../../../lib/socket';
 import { colors, radii } from '../../../theme/colors';
 import { Message } from '../../../types/chat';
 
-const POLL_INTERVAL_MS = 3000;
+// A safety-net fallback in case the socket connection drops — pushes over
+// the socket (see subscribeChat below) are what make new messages feel instant.
+const POLL_INTERVAL_MS = 15000;
 
 export default function ChatDetail() {
   const { user } = useAuth();
@@ -38,16 +41,30 @@ export default function ChatDetail() {
   }, [refresh]);
 
   useEffect(() => {
+    if (!chatId) return;
+    return realtime.subscribeChat(chatId, refresh);
+  }, [chatId, refresh]);
+
+  useEffect(() => {
     if (chatId && user?.role === 'manager') markChatRead(chatId);
   }, [chatId, user?.role]);
 
   const handleSend = async (text: string) => {
     if (!chatId || !user) return;
+    // Show the message immediately rather than waiting on the round trip
+    // (which can include a Claude call) before it appears.
+    const optimisticId = `optimistic-${Date.now()}`;
+    setMessages((prev) => [
+      ...prev,
+      { id: optimisticId, sender: user.role, text, createdAt: new Date().toISOString() },
+    ]);
     sendingRef.current = true;
     try {
       const result = await sendMessage(chatId, user.role, text);
       setMessages(result.messages);
       setPrefill(result.prefill ? `Q: ${result.prefill.question}\nA: ${result.prefill.answer}` : undefined);
+    } catch {
+      setMessages((prev) => prev.filter((m) => m.id !== optimisticId));
     } finally {
       sendingRef.current = false;
     }

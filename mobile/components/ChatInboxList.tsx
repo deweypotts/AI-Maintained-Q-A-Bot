@@ -1,7 +1,8 @@
 import { Ionicons } from '@expo/vector-icons';
 import { useCallback, useEffect, useState } from 'react';
-import { FlatList, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
+import { Alert, FlatList, Platform, StyleSheet, Text, TouchableOpacity, View } from 'react-native';
 import { useSafeAreaInsets } from 'react-native-safe-area-context';
+import { realtime } from '../lib/socket';
 import { colors, radii } from '../theme/colors';
 import { ChatSummary } from '../types/chat';
 
@@ -10,18 +11,22 @@ interface ChatInboxListProps {
   fetchChats: () => Promise<{ chats: ChatSummary[] }>;
   onSelectChat: (id: string) => void;
   onNewChat?: () => void;
+  onDeleteChat?: (id: string) => Promise<unknown>;
   titleField: 'technicianName' | 'managerName';
   emptyText: string;
   hideHeader?: boolean;
 }
 
-const POLL_INTERVAL_MS = 4000;
+// A safety-net fallback in case the socket connection drops — pushes over
+// the socket (see subscribeInbox below) are what make updates feel instant.
+const POLL_INTERVAL_MS = 15000;
 
 export function ChatInboxList({
   title,
   fetchChats,
   onSelectChat,
   onNewChat,
+  onDeleteChat,
   titleField,
   emptyText,
   hideHeader,
@@ -43,6 +48,33 @@ export function ChatInboxList({
     const interval = setInterval(refresh, POLL_INTERVAL_MS);
     return () => clearInterval(interval);
   }, [refresh]);
+
+  useEffect(() => {
+    return realtime.subscribeInbox(refresh);
+  }, [refresh]);
+
+  const handleDelete = useCallback(
+    (item: ChatSummary) => {
+      if (!onDeleteChat) return;
+      const doDelete = async () => {
+        setChats((prev) => prev.filter((c) => c.id !== item.id));
+        try {
+          await onDeleteChat(item.id);
+        } catch {
+          refresh();
+        }
+      };
+      if (Platform.OS === 'web') {
+        if (window.confirm(`Delete this conversation with ${item[titleField]}?`)) doDelete();
+        return;
+      }
+      Alert.alert('Delete conversation?', `This removes your chat with ${item[titleField]}.`, [
+        { text: 'Cancel', style: 'cancel' },
+        { text: 'Delete', style: 'destructive', onPress: doDelete },
+      ]);
+    },
+    [onDeleteChat, titleField, refresh]
+  );
 
   return (
     <View style={{ flex: 1, backgroundColor: colors.background }}>
@@ -71,6 +103,15 @@ export function ChatInboxList({
                 {item.lastMessagePreview ?? 'New conversation'}
               </Text>
             </View>
+            {onDeleteChat && (
+              <TouchableOpacity
+                style={styles.deleteButton}
+                hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}
+                onPress={() => handleDelete(item)}
+              >
+                <Ionicons name="close" size={18} color={colors.textSecondary} />
+              </TouchableOpacity>
+            )}
           </TouchableOpacity>
         )}
         ListEmptyComponent={<Text style={styles.empty}>{emptyText}</Text>}
@@ -115,6 +156,7 @@ const styles = StyleSheet.create({
   },
   unreadDot: { width: 8, height: 8, borderRadius: 4, backgroundColor: colors.blueAccent, marginRight: 10 },
   rowContent: { flex: 1, marginRight: 8 },
+  deleteButton: { padding: 4 },
   name: { fontSize: 16, fontWeight: '600', color: colors.textPrimary },
   nameUnread: { fontWeight: '700' },
   preview: { fontSize: 13, color: colors.textSecondary, marginTop: 2 },

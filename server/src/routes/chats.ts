@@ -12,6 +12,7 @@ import {
   setChatState,
   VisibleTo,
 } from '../lib/kbChat';
+import { broadcastInboxUpdate } from '../lib/realtime';
 
 export const chatsRouter = Router();
 
@@ -62,9 +63,12 @@ chatsRouter.get('/', asyncHandler(async (req, res) => {
                  false
                )
              else
+               -- Only messages tied to an escalation (episode_id set) count —
+               -- a bot answer the AI resolved on its own never needed the manager.
                exists(
                  select 1 from messages m
                  where m.chat_id = c.id and m.sender = 'technician' and m.visible_to != 'technician'
+                   and m.episode_id is not null
                    and (c.manager_read_at is null or m.created_at > c.manager_read_at)
                )
            end as "hasUnread",
@@ -75,15 +79,19 @@ chatsRouter.get('/', asyncHandler(async (req, res) => {
                coalesce(
                  (select text from messages m
                     where m.chat_id = c.id and m.sender = 'technician' and m.visible_to != 'technician'
+                      and m.episode_id is not null
                       and (c.manager_read_at is null or m.created_at > c.manager_read_at)
                     order by m.created_at asc limit 1),
-                 (select text from messages m where m.chat_id = c.id and m.visible_to != 'technician' order by m.created_at desc limit 1)
+                 (select text from messages m where m.chat_id = c.id and m.visible_to != 'technician' and m.episode_id is not null order by m.created_at desc limit 1)
                )
            end as "lastMessagePreview",
            (select created_at from messages m where m.chat_id = c.id order by m.created_at desc limit 1) as "updatedAt"
     from chats c
     join users u on u.id = c.technician_id
-    where $1::uuid is null or c.technician_id = $1
+    where $1::uuid is not null and c.technician_id = $1
+       -- Manager inbox: only chats that actually escalated at some point —
+       -- ones the AI fully resolved never needed the manager's attention.
+       or $1::uuid is null and exists(select 1 from episodes e where e.chat_id = c.id)
     order by "updatedAt" desc nulls last
   `,
     [technicianId]
@@ -124,6 +132,45 @@ chatsRouter.get('/:chatId', asyncHandler(async (req, res) => {
   res.json({ chat: chatResult.rows[0], escalated: episodeResult.rows.length > 0, messages });
 }));
 
+chatsRouter.delete('/:chatId', asyncHandler(async (req, res) => {
+  const { chatId } = req.params;
+  if (!UUID_RE.test(chatId)) {
+    res.status(400).json({ error: 'invalid chat id' });
+    return;
+  }
+
+  const client = await pool.connect();
+  try {
+    await client.query('begin');
+    // Approved kb_entries should survive the chat they originated from —
+    // just drop the now-dangling link before the episode goes away.
+    await client.query(
+      'update kb_entries set source_episode_id = null where source_episode_id in (select id from episodes where chat_id = $1)',
+      [chatId]
+    );
+    await client.query('update chats set pending_kb_entry_id = null where id = $1', [chatId]);
+    await client.query('delete from pending_kb_entries where episode_id in (select id from episodes where chat_id = $1)', [
+      chatId,
+    ]);
+    await client.query('delete from messages where chat_id = $1', [chatId]);
+    await client.query('delete from episodes where chat_id = $1', [chatId]);
+    const deleted = await client.query('delete from chats where id = $1 returning id', [chatId]);
+    await client.query('commit');
+
+    if (!deleted.rows[0]) {
+      res.status(404).json({ error: 'chat not found' });
+      return;
+    }
+    broadcastInboxUpdate();
+    res.json({ ok: true });
+  } catch (err) {
+    await client.query('rollback');
+    throw err;
+  } finally {
+    client.release();
+  }
+}));
+
 chatsRouter.post('/:chatId/read', asyncHandler(async (req, res) => {
   const { chatId } = req.params;
   if (!UUID_RE.test(chatId)) {
@@ -131,6 +178,7 @@ chatsRouter.post('/:chatId/read', asyncHandler(async (req, res) => {
     return;
   }
   await pool.query('update chats set manager_read_at = now() where id = $1', [chatId]);
+  broadcastInboxUpdate();
   res.json({ ok: true });
 }));
 
