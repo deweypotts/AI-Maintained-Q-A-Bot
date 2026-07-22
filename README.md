@@ -1,4 +1,4 @@
-# Self-Maintained Chatbot
+# Chatbot with Evergreen Context
 
 A self-maintaining chatbot for field technicians. Technicians ask a chatbot
 questions; if the bot can't help, a manager is pulled inline into the same
@@ -6,6 +6,10 @@ chat. Once the exchange resolves, an AI pass proposes a knowledge base entry
 for the manager to approve, so the next technician with the same question
 gets an instant answer — the knowledge base grows on its own from real
 conversations instead of anyone writing docs by hand.
+
+See a demo video here.
+
+[Demo Video](https://drive.google.com/file/d/1ePSFuWx6caQwWmljAnJgsPEl00gp7Okx/view)
 
 ## How it works
 
